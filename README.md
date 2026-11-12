@@ -17,4 +17,27 @@ Currency quotes ingestion from the Banco Central do Brasil (PTAX) public API usi
 3. `silver/bronze_to_silver_quotes.ipynb` — reads `New`, merges into `quotes`, moves files to `Processed`
 4. `gold/silver_to_gold_quotes.ipynb` — rebuilds `fct_quotes` filling date gaps with the last known quote
 
-Run them in order. Scheduled runs require a Databricks Job (not yet configured).
+Run them in order — or let the scheduled job do it.
+
+## Scheduled job
+
+The pipeline runs automatically via the Databricks Job **`currency_quotes_daily`** (`job_id: 1036646122285599`).
+
+| Setting | Value |
+|---|---|
+| Schedule | Monday–Friday, 15:00 (`America/Sao_Paulo`), `quartz_cron_expression: 0 0 15 ? * MON-FRI` |
+| Compute | Serverless (`performance_target: STANDARD`), no cluster |
+| Tasks (DAG) | `ingest_currencies` → `ingest_quotes` → `bronze_to_silver_quotes` → `silver_to_gold_quotes` |
+| Environment | `default` (serverless environment version `4`, dependency `requests==2.32.3`) |
+| Concurrency | `max_concurrent_runs: 1`, queue enabled |
+| Notifications | Email to `giovannecampagnola1@gmail.com` on failure |
+| Status | `UNPAUSED` |
+
+Each task path points to the workspace Git folder `/Users/giovannecampagnola1@gmail.com/currency_quotes/...`.
+The `ingest_quotes` task republishes the full 2022→present load for every currency on each run,
+so scheduled runs are idempotent (the silver layer deduplicates on `dc_currency` + `dt_period`).
+A manual run can be triggered with:
+
+```bash
+databricks jobs run-now 1036646122285599
+```
